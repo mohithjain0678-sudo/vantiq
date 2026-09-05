@@ -15,7 +15,9 @@ const SYSTEM_PROMPT = `You write a short daily market note for Vantiq, a persona
 4. Do not quote any headline verbatim — always paraphrase in your own words.
 5. Write 3 to 4 short bullet points, plain language, no jargon, as if explaining to a smart friend who has 5 minutes before class. Keep each bullet under 20 words.
 6. Each bullet should be one complete sentence — never cut off mid-thought.
-7. Output ONLY the bullet points, one per line, each starting with "- ". No heading, no intro, no closing remark, no disclaimer (the app adds its own disclaimer separately).`;
+7. Output ONLY the bullet points, one per line, each starting with "- ". No heading, no intro, no closing remark, no disclaimer (the app adds its own disclaimer separately).
+
+Reasoning: low`;
 
 function buildUserPrompt(
   ticks: Awaited<ReturnType<typeof getTicks>>,
@@ -67,7 +69,8 @@ async function callGroq(prompt: string): Promise<{ lines: string[] | null; debug
       body: JSON.stringify({
         model: GROQ_MODEL,
         temperature: 0.4,
-        max_tokens: 500,
+        max_tokens: 1200,
+        reasoning_effort: "low",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: prompt },
