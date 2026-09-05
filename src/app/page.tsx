@@ -106,7 +106,8 @@ export default function Home() {
                 <li>Watchlist up to 5 stocks</li>
               </ul>
             </div>
-            <div className="border border-[color:var(--brass)] rounded-sm p-8">
+            <div className="border border-[color:var(--brass)] rounded-sm p-8 relative">
+              <span className="absolute -top-3 left-8 bg-[color:var(--ink)] px-2 text-xs text-[color:var(--brass)]">Most chosen</span>
               <p className="text-sm text-[color:var(--brass)] mb-1">Pro</p>
               <p className="font-display text-3xl mb-6">₹99<span className="text-base text-[color:var(--slate)]"> /month</span></p>
               <ul className="space-y-2 text-sm text-[color:var(--slate)]">

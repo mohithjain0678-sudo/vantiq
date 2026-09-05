@@ -28,6 +28,16 @@ body {
   font-feature-settings: "tnum" 1;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 .font-display {
   font-family: 'Newsreader', serif;
 }

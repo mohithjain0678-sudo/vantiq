@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 type Transaction = {
   id: string;
@@ -14,6 +15,7 @@ type Transaction = {
 };
 
 const CATEGORIES = ["Food", "Transport", "Rent", "Subscriptions", "Fun", "Other"];
+const CHART_COLORS = ["#C9A227", "#3E7A5F", "#7A8290", "#A8452F", "#8A7220", "#EDEAE2"];
 
 export default function DashboardClient({
   initialTransactions,
@@ -37,6 +39,21 @@ export default function DashboardClient({
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + Number(t.amount), 0);
   const balance = income - expense;
+
+  const categoryBreakdown = CATEGORIES.map((cat) => ({
+    name: cat,
+    value: transactions
+      .filter((t) => t.type === "expense" && t.category === cat)
+      .reduce((sum, t) => sum + Number(t.amount), 0),
+  })).filter((c) => c.value > 0);
+
+  async function handleDelete(id: string) {
+    const supabase = createClient();
+    const { error } = await supabase.from("transactions").delete().eq("id", id);
+    if (!error) {
+      setTransactions(transactions.filter((t) => t.id !== id));
+    }
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -77,9 +94,14 @@ export default function DashboardClient({
 
   return (
     <div className="min-h-full bg-[color:var(--ink)] text-[color:var(--paper)]">
-      <nav className="flex items-center justify-between px-6 md:px-12 py-5 border-b border-[color:var(--hairline)]">
-        <a href="/" className="font-display text-xl">Vantiq</a>
-        <div className="flex items-center gap-4 text-sm text-[color:var(--slate)]">
+      <nav className="flex items-center justify-between px-6 md:px-12 py-5 border-b border-[color:var(--hairline)] gap-4">
+        <a href="/" className="font-display text-xl shrink-0">Vantiq</a>
+        <input
+          type="text"
+          placeholder="Search a stock — Reliance, TCS, Infosys..."
+          className="flex-1 max-w-sm bg-[color:var(--ink-raised)] border border-[color:var(--hairline)] rounded-sm px-3 py-1.5 text-sm focus:outline-none focus:border-[color:var(--brass)]"
+        />
+        <div className="flex items-center gap-4 text-sm text-[color:var(--slate)] shrink-0">
           <span>{userEmail}</span>
           <button onClick={handleLogout} className="hover:text-paper transition-colors">
             Log out
@@ -102,6 +124,48 @@ export default function DashboardClient({
             <p className="font-display text-2xl text-[color:var(--loss)]">₹{expense.toLocaleString("en-IN")}</p>
           </div>
         </div>
+
+        {categoryBreakdown.length > 0 && (
+          <div className="border border-[color:var(--hairline)] rounded-sm p-6 mb-8">
+            <h2 className="font-display text-lg mb-4">Where it went</h2>
+            <div className="grid md:grid-cols-2 gap-6 items-center">
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={categoryBreakdown}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={2}
+                  >
+                    {categoryBreakdown.map((entry, i) => (
+                      <Cell key={entry.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ background: "var(--ink-raised)", border: "1px solid var(--hairline)", borderRadius: 4 }}
+                    formatter={(value) => `₹${Number(value).toLocaleString("en-IN")}`}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <ul className="space-y-2 text-sm">
+                {categoryBreakdown.map((c, i) => (
+                  <li key={c.name} className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full inline-block"
+                        style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+                      />
+                      {c.name}
+                    </span>
+                    <span className="text-[color:var(--slate)]">₹{c.value.toLocaleString("en-IN")}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-[1fr_1.5fr] gap-8">
           <form onSubmit={handleAdd} className="border border-[color:var(--hairline)] rounded-sm p-6 space-y-4 h-fit">
@@ -181,14 +245,23 @@ export default function DashboardClient({
             ) : (
               <ul className="space-y-3">
                 {transactions.map((t) => (
-                  <li key={t.id} className="flex justify-between items-center border-b border-[color:var(--hairline)] pb-3 text-sm">
+                  <li key={t.id} className="flex justify-between items-center border-b border-[color:var(--hairline)] pb-3 text-sm group">
                     <div>
                       <p>{t.category}{t.note ? ` — ${t.note}` : ""}</p>
                       <p className="text-[color:var(--slate)] text-xs">{t.occurred_at}</p>
                     </div>
-                    <span className={t.type === "income" ? "text-[color:var(--gain)]" : "text-[color:var(--loss)]"}>
-                      {t.type === "income" ? "+" : "-"}₹{Number(t.amount).toLocaleString("en-IN")}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className={t.type === "income" ? "text-[color:var(--gain)]" : "text-[color:var(--loss)]"}>
+                        {t.type === "income" ? "+" : "-"}₹{Number(t.amount).toLocaleString("en-IN")}
+                      </span>
+                      <button
+                        onClick={() => handleDelete(t.id)}
+                        className="opacity-0 group-hover:opacity-100 text-[color:var(--slate)] hover:text-[color:var(--loss)] transition-opacity text-xs"
+                        aria-label="Delete transaction"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
