@@ -22,10 +22,16 @@ export default async function DashboardPage() {
     .select("*")
     .order("category", { ascending: true });
 
+  const { data: holdings } = await supabase
+    .from("holdings")
+    .select("*")
+    .order("created_at", { ascending: false });
+
   return (
     <DashboardClient
       initialTransactions={transactions ?? []}
       initialBudgets={budgets ?? []}
+      initialHoldings={holdings ?? []}
       userEmail={user.email ?? ""}
     />
   );

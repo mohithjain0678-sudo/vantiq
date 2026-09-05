@@ -7,6 +7,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import NewsRadar from "@/components/NewsRadar";
 import AIBriefing from "@/components/AIBriefing";
 import StockSearch from "@/components/StockSearch";
+import PortfolioSection, { type Holding } from "@/components/PortfolioSection";
 
 type Transaction = {
   id: string;
@@ -30,10 +31,12 @@ const WARNING_THRESHOLD = 0.9; // flag a category once spend hits 90% of its bud
 export default function DashboardClient({
   initialTransactions,
   initialBudgets,
+  initialHoldings,
   userEmail,
 }: {
   initialTransactions: Transaction[];
   initialBudgets: Budget[];
+  initialHoldings: Holding[];
   userEmail: string;
 }) {
   const [transactions, setTransactions] = useState(initialTransactions);
@@ -313,6 +316,8 @@ export default function DashboardClient({
             })}
           </div>
         </div>
+
+        <PortfolioSection initialHoldings={initialHoldings} />
 
         <div className="grid md:grid-cols-[1fr_1.5fr] gap-8">
           <form onSubmit={handleAdd} className="border border-[color:var(--hairline)] rounded-sm p-6 space-y-4 h-fit">
