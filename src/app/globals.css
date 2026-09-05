@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --ink: #0E1116;
+  --ink-raised: #161B22;
+  --paper: #EDEAE2;
+  --slate: #7A8290;
+  --brass: #C9A227;
+  --brass-dim: #8A7220;
+  --gain: #3E7A5F;
+  --loss: #A8452F;
+  --hairline: #262C36;
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-brass: var(--brass);
+  --font-display: 'Newsreader', serif;
+  --font-sans: 'Inter', sans-serif;
+}
+
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: 'Inter', sans-serif;
+  font-feature-settings: "tnum" 1;
+}
+
+.font-display {
+  font-family: 'Newsreader', serif;
+}
+
+.ticker-track {
+  animation: ticker-scroll 38s linear infinite;
+  width: max-content;
+}
+
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+}
