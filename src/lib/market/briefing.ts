@@ -14,7 +14,7 @@ const SYSTEM_PROMPT = `You write a short daily market note for Vantiq, a persona
 3. Only describe what the provided data already shows — do not invent numbers, events, or causes not present in the data.
 4. Do not quote any headline verbatim — always paraphrase in your own words.
 5. Write 3 to 4 short bullet points, plain language, no jargon, as if explaining to a smart friend who has 5 minutes before class. Keep each bullet under 20 words.
-6. Each bullet should be one complete sentence — never cut off mid-thought.
+6. Each bullet must be a single unbroken line of text — never split one bullet's sentence across two lines.
 7. Output ONLY the bullet points, one per line, each starting with "- ". No heading, no intro, no closing remark, no disclaimer (the app adds its own disclaimer separately).
 
 Reasoning: low`;
@@ -99,12 +99,13 @@ async function callGroq(prompt: string): Promise<{ lines: string[] | null; debug
       .map((l) => l.trim())
       .filter((l) => /^[-*•]\s*/.test(l))
       .map((l) => l.replace(/^[-*•]\s*/, ""))
-      // Drop a trailing bullet that looks cut off (no sentence-ending
-      // punctuation) rather than show a truncated fragment to users.
-      .filter((l, i, arr) => i < arr.length - 1 || /[.!?]$/.test(l));
+      // Reject fragments: a real bullet ends with sentence punctuation and
+      // has enough words to be a complete thought, not a mid-word cut like
+      // "Reliance, Bajfin".
+      .filter((l) => /[.!?]$/.test(l) && l.split(/\s+/).length >= 4);
 
-    if (lines.length === 0) {
-      return { lines: null, debug: `no bullet lines parsed from: ${content.slice(0, 200)}` };
+    if (lines.length < 2) {
+      return { lines: null, debug: `too few complete bullets after filtering, raw: ${content.slice(0, 200)}` };
     }
     return { lines };
   } catch (e) {
