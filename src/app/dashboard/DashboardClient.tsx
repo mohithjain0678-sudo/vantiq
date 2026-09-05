@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import NewsRadar from "@/components/NewsRadar";
 
 type Transaction = {
   id: string;
@@ -124,6 +125,8 @@ export default function DashboardClient({
             <p className="font-display text-2xl text-[color:var(--loss)]">₹{expense.toLocaleString("en-IN")}</p>
           </div>
         </div>
+
+        <NewsRadar />
 
         {categoryBreakdown.length > 0 && (
           <div className="border border-[color:var(--hairline)] rounded-sm p-6 mb-8">
