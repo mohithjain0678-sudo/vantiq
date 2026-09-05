@@ -17,17 +17,29 @@ type Transaction = {
   occurred_at: string;
 };
 
+type Budget = {
+  id: string;
+  category: string;
+  monthly_limit: number;
+};
+
 const CATEGORIES = ["Food", "Transport", "Rent", "Subscriptions", "Fun", "Other"];
 const CHART_COLORS = ["#C9A227", "#3E7A5F", "#7A8290", "#A8452F", "#8A7220", "#EDEAE2"];
+const WARNING_THRESHOLD = 0.9; // flag a category once spend hits 90% of its budget
 
 export default function DashboardClient({
   initialTransactions,
+  initialBudgets,
   userEmail,
 }: {
   initialTransactions: Transaction[];
+  initialBudgets: Budget[];
   userEmail: string;
 }) {
   const [transactions, setTransactions] = useState(initialTransactions);
+  const [budgets, setBudgets] = useState(initialBudgets);
+  const [budgetInputs, setBudgetInputs] = useState<Record<string, string>>({});
+  const [savingBudget, setSavingBudget] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -49,6 +61,28 @@ export default function DashboardClient({
       .filter((t) => t.type === "expense" && t.category === cat)
       .reduce((sum, t) => sum + Number(t.amount), 0),
   })).filter((c) => c.value > 0);
+
+  // Budgets are monthly, so spend is scoped to the current calendar month —
+  // a transaction from last month shouldn't count against this month's limit.
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const spentThisMonthByCategory = CATEGORIES.reduce<Record<string, number>>((acc, cat) => {
+    acc[cat] = transactions
+      .filter((t) => t.type === "expense" && t.category === cat && t.occurred_at.startsWith(currentMonthKey))
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+    return acc;
+  }, {});
+
+  const budgetByCategory = budgets.reduce<Record<string, Budget>>((acc, b) => {
+    acc[b.category] = b;
+    return acc;
+  }, {});
+
+  const overOrNearBudget = CATEGORIES.filter((cat) => {
+    const b = budgetByCategory[cat];
+    if (!b || b.monthly_limit <= 0) return false;
+    return spentThisMonthByCategory[cat] / b.monthly_limit >= WARNING_THRESHOLD;
+  });
 
   async function handleDelete(id: string) {
     const supabase = createClient();
@@ -88,6 +122,39 @@ export default function DashboardClient({
     }
   }
 
+  async function handleSaveBudget(cat: string) {
+    const raw = budgetInputs[cat];
+    const limit = Number(raw);
+    if (!raw || Number.isNaN(limit) || limit <= 0) return;
+
+    setSavingBudget(cat);
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setSavingBudget(null);
+      return;
+    }
+
+    // Upsert on the (user_id, category) unique constraint already defined in
+    // the schema — sets the limit if new, updates it if one already exists.
+    const { data, error } = await supabase
+      .from("budgets")
+      .upsert(
+        { user_id: user.id, category: cat, monthly_limit: limit },
+        { onConflict: "user_id,category" }
+      )
+      .select()
+      .single();
+
+    setSavingBudget(null);
+    if (!error && data) {
+      setBudgets((prev) => [...prev.filter((b) => b.category !== cat), data]);
+      setBudgetInputs((prev) => ({ ...prev, [cat]: "" }));
+    }
+  }
+
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -109,6 +176,22 @@ export default function DashboardClient({
       </nav>
 
       <div className="max-w-5xl mx-auto px-6 md:px-12 py-10">
+        {overOrNearBudget.length > 0 && (
+          <div className="border border-[color:var(--loss)] bg-[color:var(--loss)]/10 rounded-sm px-5 py-3 mb-6 text-sm">
+            <span className="text-[color:var(--loss)] font-medium">Budget alert: </span>
+            <span>
+              {overOrNearBudget
+                .map((cat) => {
+                  const b = budgetByCategory[cat];
+                  const pct = Math.round((spentThisMonthByCategory[cat] / b.monthly_limit) * 100);
+                  return `${cat} at ${pct}%`;
+                })
+                .join(", ")}{" "}
+              of this month&apos;s limit.
+            </span>
+          </div>
+        )}
+
         <div className="grid md:grid-cols-3 gap-4 mb-10">
           <div className="border border-[color:var(--hairline)] rounded-sm p-5">
             <p className="text-sm text-[color:var(--slate)] mb-1">Balance</p>
@@ -169,6 +252,67 @@ export default function DashboardClient({
             </div>
           </div>
         )}
+
+        <div className="border border-[color:var(--hairline)] rounded-sm p-6 mb-8">
+          <h2 className="font-display text-lg mb-4">Monthly budgets</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {CATEGORIES.map((cat) => {
+              const b = budgetByCategory[cat];
+              const spent = spentThisMonthByCategory[cat] ?? 0;
+              const pct = b && b.monthly_limit > 0 ? Math.min(100, (spent / b.monthly_limit) * 100) : 0;
+              const isOver = b ? spent > b.monthly_limit : false;
+              const isNear = b && !isOver ? spent / b.monthly_limit >= WARNING_THRESHOLD : false;
+              const barColor = isOver
+                ? "var(--loss)"
+                : isNear
+                ? "var(--brass)"
+                : "var(--gain)";
+
+              return (
+                <div key={cat} className="border border-[color:var(--hairline)] rounded-sm p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm">{cat}</span>
+                    {b ? (
+                      <span className="text-xs text-[color:var(--slate)]">
+                        ₹{spent.toLocaleString("en-IN")} / ₹{Number(b.monthly_limit).toLocaleString("en-IN")}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-[color:var(--slate)]">No limit set</span>
+                    )}
+                  </div>
+
+                  {b && (
+                    <div className="w-full h-1.5 bg-[color:var(--ink)] rounded-full overflow-hidden mb-3">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: barColor }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder={b ? "Update limit (₹)" : "Set limit (₹)"}
+                      value={budgetInputs[cat] ?? ""}
+                      onChange={(e) => setBudgetInputs((prev) => ({ ...prev, [cat]: e.target.value }))}
+                      className="flex-1 bg-[color:var(--ink-raised)] border border-[color:var(--hairline)] rounded-sm px-2 py-1 text-sm focus:outline-none focus:border-[color:var(--brass)]"
+                    />
+                    <button
+                      onClick={() => handleSaveBudget(cat)}
+                      disabled={savingBudget === cat || !budgetInputs[cat]}
+                      className="px-3 py-1 text-xs bg-[color:var(--brass)] text-[color:var(--ink)] rounded-sm hover:bg-[color:var(--brass-dim)] transition-colors disabled:opacity-50"
+                    >
+                      {savingBudget === cat ? "Saving..." : "Save"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="grid md:grid-cols-[1fr_1.5fr] gap-8">
           <form onSubmit={handleAdd} className="border border-[color:var(--hairline)] rounded-sm p-6 space-y-4 h-fit">

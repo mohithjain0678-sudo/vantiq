@@ -17,5 +17,16 @@ export default async function DashboardPage() {
     .select("*")
     .order("occurred_at", { ascending: false });
 
-  return <DashboardClient initialTransactions={transactions ?? []} userEmail={user.email ?? ""} />;
+  const { data: budgets } = await supabase
+    .from("budgets")
+    .select("*")
+    .order("category", { ascending: true });
+
+  return (
+    <DashboardClient
+      initialTransactions={transactions ?? []}
+      initialBudgets={budgets ?? []}
+      userEmail={user.email ?? ""}
+    />
+  );
 }
