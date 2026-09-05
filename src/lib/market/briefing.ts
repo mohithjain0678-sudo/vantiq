@@ -49,9 +49,9 @@ ${headlineLines || "(none available)"}
 Write the briefing following all the rules.`;
 }
 
-async function callGroq(prompt: string): Promise<string[] | null> {
+async function callGroq(prompt: string): Promise<{ lines: string[] | null; debug?: string }> {
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { lines: null, debug: "no API key at call time" };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -75,11 +75,21 @@ async function callGroq(prompt: string): Promise<string[] | null> {
       }),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Surface Groq's actual error body so we can tell an invalid key apart
+      // from a bad/unavailable model name, rate limiting, etc.
+      let bodyText = "";
+      try {
+        bodyText = (await res.text()).slice(0, 300);
+      } catch {
+        // ignore
+      }
+      return { lines: null, debug: `HTTP ${res.status}: ${bodyText}` };
+    }
 
     const json = await res.json();
     const content: string | undefined = json?.choices?.[0]?.message?.content;
-    if (!content) return null;
+    if (!content) return { lines: null, debug: "empty response content from Groq" };
 
     const lines = content
       .split("\n")
@@ -87,9 +97,12 @@ async function callGroq(prompt: string): Promise<string[] | null> {
       .filter((l) => l.startsWith("-"))
       .map((l) => l.replace(/^-\s*/, ""));
 
-    return lines.length > 0 ? lines : null;
-  } catch {
-    return null;
+    if (lines.length === 0) {
+      return { lines: null, debug: `no bullet lines parsed from: ${content.slice(0, 200)}` };
+    }
+    return { lines };
+  } catch (e) {
+    return { lines: null, debug: e instanceof Error ? `${e.name}: ${e.message}` : "unknown fetch error" };
   } finally {
     clearTimeout(timeout);
   }
@@ -112,7 +125,7 @@ export async function getBriefing(): Promise<{
 
   const [ticks, news] = await Promise.all([getTicks(), getNews()]);
   const prompt = buildUserPrompt(ticks, news);
-  const bullets = await callGroq(prompt);
+  const { lines: bullets, debug } = await callGroq(prompt);
 
   if (bullets) {
     cache = { text: bullets, fetchedAt: now };
@@ -120,8 +133,8 @@ export async function getBriefing(): Promise<{
   }
 
   if (cache) {
-    return { bullets: cache.text, updatedAt: cache.fetchedAt, stale: true, error: "Groq request failed" };
+    return { bullets: cache.text, updatedAt: cache.fetchedAt, stale: true, error: `Groq request failed: ${debug}` };
   }
 
-  return { bullets: [], updatedAt: null, error: "Groq request failed and no cached briefing available" };
+  return { bullets: [], updatedAt: null, error: `Groq request failed and no cached briefing available (${debug})` };
 }
