@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import NewsRadar from "@/components/NewsRadar";
 import AIBriefing from "@/components/AIBriefing";
+import StockSearch from "@/components/StockSearch";
 
 type Transaction = {
   id: string;
@@ -98,11 +99,7 @@ export default function DashboardClient({
     <div className="min-h-full bg-[color:var(--ink)] text-[color:var(--paper)]">
       <nav className="flex items-center justify-between px-6 md:px-12 py-5 border-b border-[color:var(--hairline)] gap-4">
         <a href="/" className="font-display text-xl shrink-0">Vantiq</a>
-        <input
-          type="text"
-          placeholder="Search a stock — Reliance, TCS, Infosys..."
-          className="flex-1 max-w-sm bg-[color:var(--ink-raised)] border border-[color:var(--hairline)] rounded-sm px-3 py-1.5 text-sm focus:outline-none focus:border-[color:var(--brass)]"
-        />
+        <StockSearch />
         <div className="flex items-center gap-4 text-sm text-[color:var(--slate)] shrink-0">
           <span>{userEmail}</span>
           <button onClick={handleLogout} className="hover:text-paper transition-colors">

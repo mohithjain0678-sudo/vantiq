@@ -81,6 +81,14 @@ async function fetchQuote(entry: { symbol: string; yahoo: string }): Promise<Tic
   }
 }
 
+// Exported so other callers (e.g. the stock search feature, which resolves
+// arbitrary NSE symbols rather than the fixed tracked list) can fetch a
+// single live quote without duplicating the chart-endpoint fetch logic.
+// Bypasses the tracked-symbol cache/fallback since it's for one-off lookups.
+export async function fetchQuoteBySymbol(displaySymbol: string, yahooSymbol: string): Promise<Tick | null> {
+  return fetchQuote({ symbol: displaySymbol, yahoo: yahooSymbol });
+}
+
 export async function getTicks(): Promise<Tick[]> {
   const now = Date.now();
   if (cache && now - cache.fetchedAt < CACHE_TTL_MS) {
