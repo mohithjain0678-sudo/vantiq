@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import NewsRadar from "@/components/NewsRadar";
+import AIBriefing from "@/components/AIBriefing";
 
 type Transaction = {
   id: string;
@@ -125,6 +126,8 @@ export default function DashboardClient({
             <p className="font-display text-2xl text-[color:var(--loss)]">₹{expense.toLocaleString("en-IN")}</p>
           </div>
         </div>
+
+        <AIBriefing />
 
         <NewsRadar />
 
