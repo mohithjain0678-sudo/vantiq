@@ -1,12 +1,17 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 type Tick = {
   symbol: string;
   price: string;
   change: number;
+  stale?: boolean;
 };
 
-const TICKS: Tick[] = [
+// Shown immediately on first paint, before the first live fetch resolves,
+// so the ticker never appears empty. Replaced as soon as /api/ticker responds.
+const FALLBACK_TICKS: Tick[] = [
   { symbol: "NIFTY 50", price: "24,812.40", change: 0.62 },
   { symbol: "SENSEX", price: "81,203.15", change: 0.58 },
   { symbol: "RELIANCE", price: "2,946.10", change: -0.24 },
@@ -19,12 +24,16 @@ const TICKS: Tick[] = [
   { symbol: "SBIN", price: "832.45", change: 0.73 },
 ];
 
+const REFRESH_MS = 30_000;
+
 function TickItem({ tick }: { tick: Tick }) {
   const positive = tick.change >= 0;
   return (
     <span className="inline-flex items-center gap-2 px-6 py-2 whitespace-nowrap text-sm">
       <span className="text-paper/80 font-medium">{tick.symbol}</span>
-      <span className="text-paper/50">{tick.price}</span>
+      <span className={tick.stale ? "text-paper/30" : "text-paper/50"}>
+        {tick.price}
+      </span>
       <span
         className={
           positive ? "text-[color:var(--gain)]" : "text-[color:var(--loss)]"
@@ -37,7 +46,34 @@ function TickItem({ tick }: { tick: Tick }) {
 }
 
 export default function Ticker() {
-  const row = [...TICKS, ...TICKS];
+  const [ticks, setTicks] = useState<Tick[]>(FALLBACK_TICKS);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+
+    async function load() {
+      try {
+        const res = await fetch("/api/ticker", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (mounted.current && Array.isArray(json.ticks) && json.ticks.length) {
+          setTicks(json.ticks);
+        }
+      } catch {
+        // Keep showing whatever we last had (fallback or last live data).
+      }
+    }
+
+    load();
+    const interval = setInterval(load, REFRESH_MS);
+    return () => {
+      mounted.current = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const row = [...ticks, ...ticks];
   return (
     <div className="w-full overflow-hidden border-b border-[color:var(--hairline)] bg-[color:var(--ink-raised)]">
       <div className="ticker-track flex">
