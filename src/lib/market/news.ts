@@ -48,6 +48,21 @@ const RELEVANCE_KEYWORDS = [
 // scoring pass locally after the fetch.
 const QUERY_HINT = "NSE OR BSE OR Sensex OR Nifty OR RBI OR rupee";
 
+const BLOCKED_PATTERNS: RegExp[] = [
+  /\b(stocks?|shares?|picks?)\s+to\s+(buy|sell)\b/i,
+  /\bbuy\s+(or|and)\s+sell\b/i,
+  /\b(target price|price target)\b/i,
+  /\bshould you (buy|sell)\b/i,
+  /\bmultibagger/i,
+  /\b(top|best)\s+(stock\s+)?picks?\b/i,
+  /\bintraday\b/i,
+  /\bbuy\s+(rating|call)\b/i,
+];
+
+function isAdviceStyle(title: string): boolean {
+  return BLOCKED_PATTERNS.some((re) => re.test(title));
+}
+
 function relevanceScore(title: string): number {
   const lower = title.toLowerCase();
   return RELEVANCE_KEYWORDS.reduce((score, kw) => (lower.includes(kw) ? score + 1 : score), 0);
@@ -155,7 +170,7 @@ async function fetchNews(): Promise<{ items: NewsItem[]; error?: string }> {
     }
   }
 
-  const ranked = rankAndFilter(combined).slice(0, 10);
+  const ranked = rankAndFilter(combined.filter((i) => !isAdviceStyle(i.title))).slice(0, 10);
   return { items: ranked };
 }
 
