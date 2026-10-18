@@ -15,6 +15,28 @@ export type Holding = {
 
 type LiveQuote = { price: number; change: number; stale?: boolean } | null;
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchOne(h: Holding): Promise<LiveQuote> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(
+        `/api/stock-quote?symbol=${encodeURIComponent(h.display_symbol)}&yahooSymbol=${encodeURIComponent(h.yahoo_symbol)}`,
+        { cache: "no-store" }
+      );
+      if (res.ok) {
+        const json = await res.json();
+        const price = Number(String(json.tick.price).replace(/,/g, ""));
+        if (Number.isFinite(price)) {
+          return { price, change: json.tick.change, stale: json.tick.stale };
+        }
+      }
+    } catch {}
+    await sleep(600 * (attempt + 1));
+  }
+  return null;
+}
+
 export default function PortfolioSection({ initialHoldings }: { initialHoldings: Holding[] }) {
   const [holdings, setHoldings] = useState(initialHoldings);
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
@@ -22,32 +44,21 @@ export default function PortfolioSection({ initialHoldings }: { initialHoldings:
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Fetch a live quote for every held symbol. Reuses the same
-  // /api/stock-quote route the search bar uses, so it works for any NSE
-  // company a user holds, not just the 8 tracked in the ticker.
   async function refreshQuotes(list: Holding[]) {
     if (list.length === 0) return;
     setLoadingQuotes(true);
     try {
-      const results = await Promise.all(
-        list.map(async (h) => {
-          try {
-            const res = await fetch(
-              `/api/stock-quote?symbol=${encodeURIComponent(h.display_symbol)}&yahooSymbol=${encodeURIComponent(
-                h.yahoo_symbol
-              )}`,
-              { cache: "no-store" }
-            );
-            if (!res.ok) return [h.id, null] as const;
-            const json = await res.json();
-            const price = Number(String(json.tick.price).replace(/,/g, ""));
-            return [h.id, { price, change: json.tick.change, stale: json.tick.stale }] as const;
-          } catch {
-            return [h.id, null] as const;
+      for (let i = 0; i < list.length; i += 2) {
+        const batch = list.slice(i, i + 2);
+        const results = await Promise.all(batch.map(async (h) => [h.id, await fetchOne(h)] as const));
+        setQuotes((prev) => {
+          const next = { ...prev };
+          for (const [id, q] of results) {
+            if (q || !next[id]) next[id] = q;
           }
-        })
-      );
-      setQuotes(Object.fromEntries(results));
+          return next;
+        });
+      }
     } finally {
       setLoadingQuotes(false);
     }
@@ -92,9 +103,7 @@ export default function PortfolioSection({ initialHoldings }: { initialHoldings:
     if (!error && data) {
       const next = [data, ...holdings];
       setHoldings(next);
-      refreshQuotes([data]).then(() => {
-        // merge, don't wipe existing quotes for other holdings
-      });
+      refreshQuotes([data]);
     }
   }
 
@@ -113,12 +122,9 @@ export default function PortfolioSection({ initialHoldings }: { initialHoldings:
     }
   }
 
-  const totalInvested = holdings.reduce((sum, h) => sum + h.quantity * h.buy_price, 0);
-  const totalCurrent = holdings.reduce((sum, h) => {
-    const q = quotes[h.id];
-    const price = q ? q.price : h.buy_price; // fall back to buy price if quote hasn't loaded
-    return sum + h.quantity * price;
-  }, 0);
+  const priced = holdings.filter((h) => quotes[h.id]);
+  const totalInvested = priced.reduce((sum, h) => sum + h.quantity * h.buy_price, 0);
+  const totalCurrent = priced.reduce((sum, h) => sum + h.quantity * (quotes[h.id]?.price ?? 0), 0);
   const totalGain = totalCurrent - totalInvested;
   const totalGainPct = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
 
@@ -136,6 +142,12 @@ export default function PortfolioSection({ initialHoldings }: { initialHoldings:
           </button>
         )}
       </div>
+
+      {holdings.length > 0 && priced.length < holdings.length && (
+        <p className="text-xs text-[color:var(--slate)] mb-3">
+          Totals based on {priced.length} of {holdings.length} holdings with live prices.
+        </p>
+      )}
 
       {holdings.length > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -196,6 +208,13 @@ export default function PortfolioSection({ initialHoldings }: { initialHoldings:
                           {gainPct?.toFixed(1)}%
                         </p>
                       </>
+                    ) : q === null ? (
+                      <button
+                        onClick={() => refreshQuotes([h])}
+                        className="text-xs text-[color:var(--slate)] hover:text-[color:var(--paper)] transition-colors"
+                      >
+                        Price unavailable · Retry
+                      </button>
                     ) : (
                       <p className="text-xs text-[color:var(--slate)]">Loading…</p>
                     )}
