@@ -14,7 +14,7 @@ const SYSTEM_PROMPT = `You write a short daily market note for Vantiq, a persona
 3. Only describe what the provided data already shows — do not invent numbers, events, or causes not present in the data.
 4. Do not quote any headline verbatim — always paraphrase in your own words.
 5. Write 3 to 4 short bullet points, plain language, no jargon, as if explaining to a smart friend who has 5 minutes before class. Keep each bullet under 20 words.
-6. Each bullet must be a single unbroken line of text — never split one bullet's sentence across two lines.
+6. Each bullet must be a single unbroken line of text — never split one bullet's sentence across two lines. End every bullet with terminal punctuation (a period), even if the bullet ends with a percentage or number — e.g. "...up 0.48%." not "...up 0.48%".
 7. Output ONLY the bullet points, one per line, each starting with "- ". No heading, no intro, no closing remark, no disclaimer (the app adds its own disclaimer separately).
 
 Reasoning: low`;
@@ -69,7 +69,7 @@ async function callGroq(prompt: string): Promise<{ lines: string[] | null; debug
       body: JSON.stringify({
         model: GROQ_MODEL,
         temperature: 0.4,
-        max_tokens: 1200,
+        max_tokens: 2000,
         reasoning_effort: "low",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -92,20 +92,38 @@ async function callGroq(prompt: string): Promise<{ lines: string[] | null; debug
 
     const json = await res.json();
     const content: string | undefined = json?.choices?.[0]?.message?.content;
+    const finishReason: string | undefined = json?.choices?.[0]?.finish_reason;
     if (!content) return { lines: null, debug: "empty response content from Groq" };
 
-    const lines = content
-      .split("\n")
-      .map((l) => l.trim())
+    let rawLines = content.split("\n").map((l) => l.trim());
+
+    // If Groq cut the response off mid-generation (hit max_tokens before
+    // finishing), the last non-empty line is almost certainly an incomplete
+    // bullet — drop it outright rather than relying purely on the
+    // punctuation filter below to catch it.
+    if (finishReason === "length") {
+      for (let i = rawLines.length - 1; i >= 0; i--) {
+        if (rawLines[i]) {
+          rawLines = rawLines.slice(0, i);
+          break;
+        }
+      }
+    }
+
+    const lines = rawLines
       .filter((l) => /^[-*•]\s*/.test(l))
       .map((l) => l.replace(/^[-*•]\s*/, ""))
-      // Reject fragments: a real bullet ends with sentence punctuation and
-      // has enough words to be a complete thought, not a mid-word cut like
-      // "Reliance, Bajfin".
-      .filter((l) => /[.!?]$/.test(l) && l.split(/\s+/).length >= 4);
+      // Reject fragments: a real, complete bullet ends with sentence
+      // punctuation, a percentage sign, or a number (prices/levels are
+      // common bullet endings, e.g. "...to 712.1") — not a mid-word cut
+      // like "Reliance, Bajfin".
+      .filter((l) => /[.!?%\d]$/.test(l) && l.split(/\s+/).length >= 4);
 
     if (lines.length < 2) {
-      return { lines: null, debug: `too few complete bullets after filtering, raw: ${content.slice(0, 200)}` };
+      return {
+        lines: null,
+        debug: `too few complete bullets after filtering (finish_reason: ${finishReason}), raw: ${content.slice(0, 200)}`,
+      };
     }
     return { lines };
   } catch (e) {
